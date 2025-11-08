@@ -9,6 +9,8 @@ import tensorflow as tf
 from keras.models import Sequential
 from keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Dropout
 from keras.callbacks import EarlyStopping
+import datetime
+
 
 
 genres = ['blues', 'classical', 'country', 'disco', 'hiphop',
@@ -96,7 +98,7 @@ history = model.fit(
 test_loss, test_acc = model.evaluate(X_test, y_test, verbose=2)
 print("Test accuracy:", test_acc)
 
-model.save('genre_classifier.keras')
+model.save(f'genre_classifier_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.keras')
 
 
 # graph
