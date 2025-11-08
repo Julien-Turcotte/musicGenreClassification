@@ -13,19 +13,26 @@ from keras.callbacks import EarlyStopping
 
 genres = ['blues', 'classical', 'country', 'disco', 'hiphop',
           'jazz', 'metal', 'pop', 'reggae', 'rock']
+
+"""
+conventions du ML X = input, y = output
+X est l'array qui represente les chansons
+y est le genre prédit
+"""
 X, y = [], []
 
-
 for g in genres:
-    folder = f"genres/{g}"  # adjust path
+    folder = f"genres/{g}"
     for filename in os.listdir(folder):
         song_path = os.path.join(folder, filename)
 
         y_audio, sr = librosa.load(song_path, duration=30)
-        mel = librosa.feature.melspectrogram(y=y_audio, sr=sr, n_mels=128)
+        # creation spectrogramme
+        mel = librosa.feature.melspectrogram(y=y_audio, sr=sr, n_mels=128, n_fft=2048, hop_length=512)
+        # Convertie en decibel
         mel_db = librosa.power_to_db(mel, ref=np.max)
 
-        
+        # pour consitent data
         max_len = 660
         if mel_db.shape[1] < max_len:
             pad_width = max_len - mel_db.shape[1]
@@ -40,8 +47,9 @@ X = np.array(X)
 y = to_categorical(np.array(y))
 
 
-X = X[..., np.newaxis]
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=True)
+X = X[..., np.newaxis] # ajout d'un 4e axe
+# 20% des data va dans test le reste on train avec
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=True, random_state=42)
 
 
 # le CNN
@@ -60,11 +68,11 @@ model = Sequential([
     Flatten(),
     Dense(128, activation='relu'),
 
-    # idk gpt overfill or sum
+    # 30% des neural links se font drop à chaque cycle pour eviter qu'il memorise les training data
     Dropout(0.3),   
 
     # output
-    Dense(len(genres), activation='softmax')
+    Dense(len(genres), activation='softmax') # softmax = trouve le genre le plus probable
 ])
 
 model.compile(
@@ -79,9 +87,10 @@ early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=
 history = model.fit(
     X_train, y_train,
     validation_data=(X_test, y_test),
-    epochs=1,
+    epochs=10, # nombre de fois que tu passes les données
     batch_size=32,
-    callbacks=[early_stop]
+    callbacks=[early_stop],
+    verbose=1
 )
 
 test_loss, test_acc = model.evaluate(X_test, y_test, verbose=2)
@@ -89,6 +98,8 @@ print("Test accuracy:", test_acc)
 
 model.save('genre_classifier.keras')
 
+
+# graph
 plt.plot(history.history['accuracy'], label='Train acc')
 plt.plot(history.history['val_accuracy'], label='Val acc')
 plt.xlabel('Epoch')
