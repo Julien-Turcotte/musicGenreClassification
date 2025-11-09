@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 from keras.utils import to_categorical
 import tensorflow as tf
 from keras.models import Sequential
-from keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+from keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization
 from keras.callbacks import EarlyStopping
 import datetime
 
@@ -48,6 +48,8 @@ for g in genres:
 X = np.array(X)
 y = to_categorical(np.array(y))
 
+# Normaliser les données entre 0 et 1 (important!)
+X = (X - X.min()) / (X.max() - X.min())
 
 X = X[..., np.newaxis] # ajout d'un 4e axe
 # 20% des data va dans test le reste on train avec
@@ -59,19 +61,28 @@ model = Sequential([
     Input(shape=(128, 660, 1)),
 
     # premier axe simple
-    Conv2D(32, (3, 3), activation='relu'),
+    Conv2D(32, (3, 3), activation='relu', padding='same'),
+    BatchNormalization(),
     MaxPooling2D((2, 2)),
+    Dropout(0.3),
 
     #deuxieme axe plus complexe
-    Conv2D(64, (3, 3), activation='relu'),
+    Conv2D(64, (3, 3), activation='relu', padding='same'),
+    BatchNormalization(),
     MaxPooling2D((2, 2)),
+    Dropout(0.3),
+
+    # Troisième couche pour plus de profondeur
+    Conv2D(128, (3, 3), activation='relu', padding='same'),
+    BatchNormalization(),
+    MaxPooling2D((2, 2)),
+    Dropout(0.3),
 
     # flat tout sur un axe pour analyze avancée
     Flatten(),
     Dense(128, activation='relu'),
-
-    # 30% des neural links se font drop à chaque cycle pour eviter qu'il memorise les training data
-    Dropout(0.3),   
+    BatchNormalization(),
+    Dropout(0.5),
 
     # output
     Dense(len(genres), activation='softmax') # softmax = trouve le genre le plus probable
@@ -83,13 +94,18 @@ model.compile(
     metrics=['accuracy']
 )
 
-# si t'es tanné d'attendre stop va pas briser le learning
-early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+print("Nombre d'échantillons:", len(X_train), "train,", len(X_test), "test")
+print("Shape X_train:", X_train.shape)
+print("Shape y_train:", y_train.shape)
+
+# stop quand le model n'apprend plus
+# patience = nombre d'epochs à attendre sans amélioration avant d'arrêter
+early_stop = EarlyStopping(monitor='val_loss', patience=8, restore_best_weights=True)
 
 history = model.fit(
     X_train, y_train,
     validation_data=(X_test, y_test),
-    epochs=10, # nombre de fois que tu passes les données
+    epochs=20, # à 30 l'accuracy baisse
     batch_size=32,
     callbacks=[early_stop],
     verbose=1
@@ -98,7 +114,7 @@ history = model.fit(
 test_loss, test_acc = model.evaluate(X_test, y_test, verbose=2)
 print("Test accuracy:", test_acc)
 
-model.save(f'genre_classifier_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.keras')
+model.save(f'genre_classifier_{datetime.datetime.now().strftime("%m-%d_%H-%M-%S")}.keras')
 
 
 # graph
