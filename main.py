@@ -11,6 +11,25 @@ from keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Dropout, B
 from keras.callbacks import EarlyStopping
 import datetime
 
+# pip uninstall et install tensorflow[and-cuda]
+
+# AJOUTE CES LIGNES POUR VÉRIFIER LE GPU:
+print("TensorFlow version:", tf.__version__)
+print("GPU disponible:", tf.config.list_physical_devices('GPU'))
+print("Nombre de GPUs:", len(tf.config.list_physical_devices('GPU')))
+
+
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+    try:
+        # Permet la croissance dynamique de la mémoire GPU
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        print(f"✅ {len(gpus)} GPU(s) configuré(s)")
+    except RuntimeError as e:
+        print(e)
+else:
+    print("❌ Aucun GPU trouvé, utilisation du CPU")
 
 
 genres = ['blues', 'classical', 'country', 'disco', 'hiphop',
