@@ -7,33 +7,37 @@ from sklearn.model_selection import train_test_split
 from keras.utils import to_categorical
 import tensorflow as tf
 from keras.models import Sequential
-from keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization
-from keras.callbacks import EarlyStopping
+from keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 import datetime
 
-# pip uninstall et install tensorflow[and-cuda]
-
-# AJOUTE CES LIGNES POUR VÉRIFIER LE GPU:
-print("TensorFlow version:", tf.__version__)
-print("GPU disponible:", tf.config.list_physical_devices('GPU'))
-print("Nombre de GPUs:", len(tf.config.list_physical_devices('GPU')))
-
-
-gpus = tf.config.list_physical_devices('GPU')
-if gpus:
-    try:
-        # Permet la croissance dynamique de la mémoire GPU
-        for gpu in gpus:
-            tf.config.experimental.set_memory_growth(gpu, True)
-        print(f"✅ {len(gpus)} GPU(s) configuré(s)")
-    except RuntimeError as e:
-        print(e)
-else:
-    print("❌ Aucun GPU trouvé, utilisation du CPU")
-
+# Fixe le random seed pour reproductibilité
+np.random.seed(42)
+tf.random.set_seed(42)
 
 genres = ['blues', 'classical', 'country', 'disco', 'hiphop',
           'jazz', 'metal', 'pop', 'reggae', 'rock']
+
+
+# ============ DATA AUGMENTATION TOUJOURS (pas aléatoire) ============
+def augment_audio(mel_db):
+    """Augmente TOUJOURS - pas de random!"""
+    augmented = [mel_db]  # Original
+    
+    # Bruit léger (TOUJOURS)
+    noise = np.random.normal(0, 0.005, mel_db.shape)
+    augmented.append(mel_db + noise)
+    
+    # Time shift (TOUJOURS)
+    shift = np.random.randint(-40, 40)
+    augmented.append(np.roll(mel_db, shift, axis=1))
+    
+    # Pitch shift (TOUJOURS)
+    pitch = np.random.uniform(0.95, 1.05)
+    augmented.append(mel_db * pitch)
+    
+    return augmented  # TOUJOURS 4 versions (1 original + 3 augmentées)
+
 
 """
 conventions du ML X = input, y = output
@@ -42,6 +46,7 @@ y est le genre prédit
 """
 X, y = [], []
 
+print("Chargement des données...")
 for g in genres:
     folder = f"genres/{g}"
     for filename in os.listdir(folder):
@@ -61,11 +66,15 @@ for g in genres:
         else:
             mel_db = mel_db[:, :max_len]
 
-        X.append(mel_db)
-        y.append(genres.index(g))
+        augmented_samples = augment_audio(mel_db)
+        for aug_mel in augmented_samples:
+            X.append(aug_mel)
+            y.append(genres.index(g))
 
 X = np.array(X)
 y = to_categorical(np.array(y))
+
+print(f"Dataset total: {len(X)} échantillons (1000 originaux × 3 = 3000)")
 
 # Normaliser les données entre 0 et 1 (important!)
 X = (X - X.min()) / (X.max() - X.min())
@@ -75,36 +84,31 @@ X = X[..., np.newaxis] # ajout d'un 4e axe
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=True, random_state=42)
 
 
-# le CNN
 model = Sequential([
     Input(shape=(128, 660, 1)),
 
-    # premier axe simple
+    # 3 Conv layers seulement (pas 4!)
     Conv2D(32, (3, 3), activation='relu', padding='same'),
-    BatchNormalization(),
     MaxPooling2D((2, 2)),
-    Dropout(0.3),
+    Dropout(0.5),  # Augmenté 0.4 → 0.5
 
-    #deuxieme axe plus complexe
     Conv2D(64, (3, 3), activation='relu', padding='same'),
-    BatchNormalization(),
     MaxPooling2D((2, 2)),
-    Dropout(0.3),
-
-    # Troisième couche pour plus de profondeur
-    Conv2D(128, (3, 3), activation='relu', padding='same'),
-    BatchNormalization(),
-    MaxPooling2D((2, 2)),
-    Dropout(0.3),
-
-    # flat tout sur un axe pour analyze avancée
-    Flatten(),
-    Dense(128, activation='relu'),
-    BatchNormalization(),
     Dropout(0.5),
 
-    # output
-    Dense(len(genres), activation='softmax') # softmax = trouve le genre le plus probable
+    Conv2D(128, (3, 3), activation='relu', padding='same'),
+    MaxPooling2D((2, 2)),
+    Dropout(0.5),
+
+    # Retiré Conv2D(256) - trop complexe!
+
+    Flatten(),
+    
+    # 1 Dense seulement (pas 2!)
+    Dense(128, activation='relu'),
+    Dropout(0.7),  # Augmenté 0.6 → 0.7
+
+    Dense(len(genres), activation='softmax')
 ])
 
 model.compile(
@@ -116,32 +120,60 @@ model.compile(
 print("Nombre d'échantillons:", len(X_train), "train,", len(X_test), "test")
 print("Shape X_train:", X_train.shape)
 print("Shape y_train:", y_train.shape)
+print(f"Batches par epoch: {len(X_train) // 32}")
 
 # stop quand le model n'apprend plus
 # patience = nombre d'epochs à attendre sans amélioration avant d'arrêter
-early_stop = EarlyStopping(monitor='val_loss', patience=8, restore_best_weights=True)
+early_stop = EarlyStopping(monitor='val_loss', patience=12, restore_best_weights=True, verbose=1)
+
+reduce_lr = ReduceLROnPlateau(
+    monitor='val_loss',
+    factor=0.5,
+    patience=5,
+    min_lr=1e-7,
+    verbose=1
+)
 
 history = model.fit(
     X_train, y_train,
     validation_data=(X_test, y_test),
-    epochs=20, # à 30 l'accuracy baisse
+    epochs=50,
     batch_size=32,
-    callbacks=[early_stop],
+    callbacks=[early_stop, reduce_lr],
     verbose=1
 )
 
 test_loss, test_acc = model.evaluate(X_test, y_test, verbose=2)
-print("Test accuracy:", test_acc)
+print(f"\n{'='*60}")
+print(f"TEST ACCURACY: {test_acc*100:.2f}%")
+print(f"{'='*60}")
 
+# FIX: Remplace : par - dans le nom du fichier
 model.save(f'genre_classifier_{datetime.datetime.now().strftime("%m-%d_%H-%M-%S")}.keras')
 
 
 # graph
+plt.figure(figsize=(12, 5))
+
+plt.subplot(1, 2, 1)
 plt.plot(history.history['accuracy'], label='Train acc')
 plt.plot(history.history['val_accuracy'], label='Val acc')
 plt.xlabel('Epoch')
 plt.ylabel('Accuracy')
+plt.title('Accuracy over epochs')
 plt.legend()
+plt.grid(True)
+
+plt.subplot(1, 2, 2)
+plt.plot(history.history['loss'], label='Train loss')
+plt.plot(history.history['val_loss'], label='Val loss')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.title('Loss over epochs')
+plt.legend()
+plt.grid(True)
+
+plt.tight_layout()
 plt.show()
 
 """
