@@ -1,7 +1,11 @@
+import os
+
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2" 
+
 import librosa.feature
 import librosa.display
 import numpy as np
-import os
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from keras.utils import to_categorical

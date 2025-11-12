@@ -1,5 +1,9 @@
-import keras
 import os
+
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"  # 0=all, 1=info, 2=warning, 3=error
+
+import keras
 import librosa
 import numpy as np
 import time
