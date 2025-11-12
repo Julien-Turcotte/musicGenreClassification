@@ -149,7 +149,7 @@ print(f"TEST ACCURACY: {test_acc*100:.2f}%")
 print(f"{'='*60}")
 
 # FIX: Remplace : par - dans le nom du fichier
-model.save(f'genre_classifier_{datetime.datetime.now().strftime("%m-%d_%H-%M-%S")}.keras')
+model.save(f'models/{datetime.datetime.now().strftime("%m-%d_%H-%M-%S")}.keras')
 
 
 # graph
